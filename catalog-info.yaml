@@ -1,0 +1,22 @@
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+
+metadata:
+  name: payment-api-dev-storage
+  description: >
+    AWS S3 application storage for
+    payment-api in dev
+
+  annotations:
+    github.com/project-slug: rmandeedu/payment-api-storage-dev4
+
+  tags:
+    - aws
+    - s3
+    - terraform
+    - dev
+
+spec:
+  type: s3-bucket
+  owner: payment-spoke
+  system: cloudops-demo
