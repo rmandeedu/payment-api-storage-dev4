@@ -24,15 +24,45 @@ jobs:
         working-directory: terraform
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Inspect GitHub OIDC claims
+        shell: bash
+        working-directory: .
+        run: |
+          TOKEN_JSON=$(curl -sS \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")
+
+          TOKEN=$(echo "$TOKEN_JSON" | jq -r '.value')
+
+          PAYLOAD=$(echo "$TOKEN" \
+            | cut -d '.' -f2 \
+            | tr '_-' '/+' \
+            | awk '{l=length($0)%4; if(l==2) $0=$0"=="; else if(l==3) $0=$0"="; print}' \
+            | base64 -d)
+
+          echo "OIDC claims used for AWS authentication:"
+          echo "$PAYLOAD" | jq '{
+            sub,
+            aud,
+            repository,
+            repository_owner,
+            ref,
+            environment,
+            workflow
+          }'
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: arn:aws:iam::056033527058:role/CloudOpsIDPProvisioningRole
           aws-region: us-east-1
+
+      - name: Verify AWS Identity
+        working-directory: .
+        run: aws sts get-caller-identity
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
