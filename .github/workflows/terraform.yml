@@ -54,11 +54,22 @@ jobs:
             workflow
           }'
 
+      - name: Show GitHub repository IDs
+        working-directory: .
+        run: |
+          echo "Repository: ${{ github.repository }}"
+          echo "Repository ID: ${{ github.repository_id }}"
+          echo "Owner: ${{ github.repository_owner }}"
+          echo "Owner ID: ${{ github.repository_owner_id }}"
+          echo "Ref: ${{ github.ref }}"
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: arn:aws:iam::056033527058:role/CloudOpsIDPProvisioningRole
           aws-region: us-east-1
+          audience: sts.amazonaws.com
+          output-env-credentials: true
 
       - name: Verify AWS Identity
         working-directory: .
