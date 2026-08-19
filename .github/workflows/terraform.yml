@@ -27,41 +27,72 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Inspect GitHub OIDC claims
-        shell: bash
+      - name: Show GitHub context
         working-directory: .
         run: |
-          TOKEN_JSON=$(curl -sS \
-            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+          echo "Repository       : ${{ github.repository }}"
+          echo "Repository ID    : ${{ github.repository_id }}"
+          echo "Repository Owner : ${{ github.repository_owner }}"
+          echo "Owner ID         : ${{ github.repository_owner_id }}"
+          echo "Ref              : ${{ github.ref }}"
+          echo "Ref Name         : ${{ github.ref_name }}"
+          echo "Workflow         : ${{ github.workflow }}"
+          echo "Event            : ${{ github.event_name }}"
+
+      - name: Request and inspect OIDC token
+        working-directory: .
+        shell: bash
+        run: |
+          echo "Checking GitHub OIDC environment..."
+
+          if [ -z "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
+            echo "ERROR: ACTIONS_ID_TOKEN_REQUEST_URL is empty"
+            exit 1
+          fi
+
+          if [ -z "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ]; then
+            echo "ERROR: ACTIONS_ID_TOKEN_REQUEST_TOKEN is empty"
+            exit 1
+          fi
+
+          echo "OIDC request environment is available"
+
+          RESPONSE=$(curl -sS \
+            -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")
 
-          TOKEN=$(echo "$TOKEN_JSON" | jq -r '.value')
+          echo "OIDC endpoint responded"
 
-          PAYLOAD=$(echo "$TOKEN" \
-            | cut -d '.' -f2 \
-            | tr '_-' '/+' \
-            | awk '{l=length($0)%4; if(l==2) $0=$0"=="; else if(l==3) $0=$0"="; print}' \
-            | base64 -d)
+          TOKEN=$(echo "$RESPONSE" | jq -r '.value')
 
-          echo "OIDC claims used for AWS authentication:"
-          echo "$PAYLOAD" | jq '{
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "ERROR: OIDC token was not returned"
+            echo "$RESPONSE"
+            exit 1
+          fi
+
+          echo "OIDC token successfully obtained"
+
+          PAYLOAD=$(echo "$TOKEN" | cut -d '.' -f2)
+          PAYLOAD=$(echo "$PAYLOAD" | tr '_-' '/+')
+
+          case $((${#PAYLOAD} % 4)) in
+            2) PAYLOAD="${PAYLOAD}==" ;;
+            3) PAYLOAD="${PAYLOAD}=" ;;
+          esac
+
+          echo "OIDC claims:"
+          echo "$PAYLOAD" | base64 -d | jq '{
             sub,
             aud,
             repository,
+            repository_id,
             repository_owner,
+            repository_owner_id,
             ref,
             environment,
             workflow
           }'
-
-      - name: Show GitHub repository IDs
-        working-directory: .
-        run: |
-          echo "Repository: ${{ github.repository }}"
-          echo "Repository ID: ${{ github.repository_id }}"
-          echo "Owner: ${{ github.repository_owner }}"
-          echo "Owner ID: ${{ github.repository_owner_id }}"
-          echo "Ref: ${{ github.ref }}"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
@@ -73,7 +104,8 @@ jobs:
 
       - name: Verify AWS Identity
         working-directory: .
-        run: aws sts get-caller-identity
+        run: |
+          aws sts get-caller-identity
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
